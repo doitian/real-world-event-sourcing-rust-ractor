@@ -1,85 +1,114 @@
-use ractor::{async_trait, cast, Actor, ActorProcessingErr, ActorRef};
+use std::process::ExitCode;
+use thiserror::Error;
+use ractor::{async_trait, Actor, ActorProcessingErr, ActorRef};
 
-/// [PingPong] is a basic actor that will print
-/// ping..pong.. repeatedly until some exit
-/// condition is met (a counter hits 10). Then
-/// it will exit
-pub struct PingPong;
+pub struct Calculator;
 
-/// This is the types of message [PingPong] supports
 #[derive(Debug, Clone)]
-pub enum Message {
-    Ping,
-    Pong,
+pub enum CalculatorCommand {
+    Add { value: i64 },
+    Sub { value: i64 },
+    Mul { value: i64 },
+    Div { value: i64 },
 }
 
-impl Message {
-    // retrieve the next message in the sequence
-    fn next(&self) -> Self {
-        match self {
-            Self::Ping => Self::Pong,
-            Self::Pong => Self::Ping,
-        }
-    }
-    // print out this message
-    fn print(&self) {
-        match self {
-            Self::Ping => print!("ping.."),
-            Self::Pong => print!("pong.."),
-        }
-    }
+#[derive(Debug)]
+pub struct CalculatorState {
+    value: i64,
+}
+
+#[derive(Debug)]
+enum CalculatorEvent {
+    DidAdd { value: i64 },
+    DidSub { value: i64 },
+    DidMul { value: i64 },
+    DidDiv { value: i64 },
+}
+
+#[derive(Error, Debug)]
+pub enum CalculatorError {
+    #[error("Division by zero")]
+    DivisionByZero,
 }
 
 #[async_trait]
-// the implementation of our actor's "logic"
-impl Actor for PingPong {
-    // An actor has a message type
-    type Msg = Message;
-    // and (optionally) internal state
-    type State = u8;
-    // Startup initialization args
-    type Arguments = ();
+impl Actor for Calculator {
+    type Msg = CalculatorCommand;
+    type State = CalculatorState;
+    type Arguments = i64;
 
-    // Initially we need to create our state, and potentially
-    // start some internal processing (by posting a message for
-    // example)
     async fn pre_start(
         &self,
-        myself: ActorRef<Self::Msg>,
-        _: (),
+        _myself: ActorRef<Self::Msg>,
+        args: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        // startup the event processing
-        cast!(myself, Message::Ping)?;
-        // create the initial state
-        Ok(0u8)
+        Ok(CalculatorState { value: args })
     }
 
-    // This is our main message handler
     async fn handle(
         &self,
-        myself: ActorRef<Self::Msg>,
-        message: Self::Msg,
+        _myself: ActorRef<Self::Msg>,
+        command: Self::Msg,
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
-        if *state < 10u8 {
-            message.print();
-            cast!(myself, message.next())?;
-            *state += 1;
-        } else {
-            println!();
-            myself.stop(None);
-            // don't send another message, rather stop the agent after 10 iterations
+        use tracing::field;
+        let tracing_span = tracing::info_span!("handle", ?command, event = field::Empty);
+        let _tracing_guard = tracing_span.enter();
+
+        match state.handle_command(command) {
+            Ok(event) => {
+                tracing_span.record("event", field::debug(&event));
+                state.handle_event(event)
+            },
+            Err(err) => {
+                tracing::error!("failed to handle command: {}", err);
+                Ok(())
+            }
         }
+    }
+}
+
+impl CalculatorState {
+    fn handle_command(&self, command: CalculatorCommand) -> Result<CalculatorEvent, CalculatorError> {
+        match command {
+            CalculatorCommand::Add { value } => Ok(CalculatorEvent::DidAdd { value }),
+            CalculatorCommand::Sub { value } => Ok(CalculatorEvent::DidSub { value }),
+            CalculatorCommand::Mul { value } => Ok(CalculatorEvent::DidMul { value }),
+            CalculatorCommand::Div { value: 0 } => Err(CalculatorError::DivisionByZero),
+            CalculatorCommand::Div { value } => Ok(CalculatorEvent::DidDiv { value }),
+        }
+    }
+
+    fn handle_event(&mut self, event: CalculatorEvent) -> Result<(), ActorProcessingErr> {
+        match event {
+            CalculatorEvent::DidAdd { value } => self.value += value,
+            CalculatorEvent::DidSub { value } => self.value -= value,
+            CalculatorEvent::DidMul { value } => self.value *= value,
+            CalculatorEvent::DidDiv { value } => self.value /= value,
+        }
+        tracing::debug!("state: {:?}", self);
         Ok(())
     }
 }
 
 #[tokio::main]
-async fn main() {
-    let (_actor, handle) = Actor::spawn(None, PingPong, ())
-        .await
-        .expect("Failed to start ping-pong actor");
-    handle
-        .await
-        .expect("Ping-pong actor failed to exit properly");
+async fn main() -> ExitCode {
+    match inner().await {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            ExitCode::from(1)
+        }
+    }
+}
+
+async fn inner() -> anyhow::Result<()> {
+    local_logging::init()?;
+    let (actor, handle) = Actor::spawn(None, Calculator, 0).await?;
+    actor.send_message(CalculatorCommand::Add { value: 8 })?;
+    actor.send_message(CalculatorCommand::Div { value: 2 })?;
+    actor.send_message(CalculatorCommand::Div { value: 0 })?;
+    actor.drain()?;
+    handle.await?;
+    Ok(())
 }

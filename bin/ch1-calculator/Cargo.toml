@@ -4,5 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ractor = { version = "0.15.2", features = ["async-trait"] }
-tokio = { version = "1.44.1", features = ["rt-multi-thread"] }
+anyhow = { workspace = true }
+ractor = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+local-logging = { workspace = true }
