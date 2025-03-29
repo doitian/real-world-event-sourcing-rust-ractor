@@ -108,6 +108,8 @@ async fn inner() -> anyhow::Result<()> {
     actor.send_message(CalculatorCommand::Add { value: 8 })?;
     actor.send_message(CalculatorCommand::Div { value: 2 })?;
     actor.send_message(CalculatorCommand::Div { value: 0 })?;
+    actor.send_message(CalculatorCommand::Mul { value: 3 })?;
+    actor.send_message(CalculatorCommand::Sub { value: 9 })?;
     actor.drain()?;
     handle.await?;
     Ok(())
