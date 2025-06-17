@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["bin/ch1-calculator", "lib/local-logging"]
+members = ["bin/ch1-calculator", "bin/ch2-account-balance", "lib/local-logging"]
 
 [workspace.dependencies]
 anyhow = "1.0.97"

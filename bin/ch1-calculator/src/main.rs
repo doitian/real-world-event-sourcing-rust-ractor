@@ -1,6 +1,6 @@
+use ractor::{async_trait, Actor, ActorProcessingErr, ActorRef};
 use std::process::ExitCode;
 use thiserror::Error;
-use ractor::{async_trait, Actor, ActorProcessingErr, ActorRef};
 
 pub struct Calculator;
 
@@ -59,7 +59,7 @@ impl Actor for Calculator {
             Ok(event) => {
                 tracing_span.record("event", field::debug(&event));
                 state.handle_event(event)
-            },
+            }
             Err(err) => {
                 tracing::error!("failed to handle command: {}", err);
                 Ok(())
@@ -69,7 +69,10 @@ impl Actor for Calculator {
 }
 
 impl CalculatorState {
-    fn handle_command(&self, command: CalculatorCommand) -> Result<CalculatorEvent, CalculatorError> {
+    fn handle_command(
+        &self,
+        command: CalculatorCommand,
+    ) -> Result<CalculatorEvent, CalculatorError> {
         match command {
             CalculatorCommand::Add { value } => Ok(CalculatorEvent::DidAdd { value }),
             CalculatorCommand::Sub { value } => Ok(CalculatorEvent::DidSub { value }),
